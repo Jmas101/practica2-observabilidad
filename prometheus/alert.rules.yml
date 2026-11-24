@@ -1,0 +1,59 @@
+
+groups:
+  - name: techsolutions-alerts
+    rules:
+
+      # ALERTA 1: Aplicacion caida
+      - alert: AppDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El backend no responde"
+          runbook: "Comprobar docker compose ps, los logs del backend y el panel de disponibilidad en Grafana."
+
+      # ALERTA 2: Demasiados errores HTTP 500
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5..",route!="/ready"}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{route!="/ready"}[5m])), 0.000001)
+          ) * 100 > 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mas del 5 por ciento de peticiones son errores 5xx"
+          runbook: "Revisar el panel de errores de Grafana, los logs de Loki y las trazas de Jaeger."
+
+      # ALERTA 3: Latencia elevada
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{route!="/ready"}[5m])
+            )
+          ) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia p95 superior a 500 ms"
+          runbook: "Consultar el panel de latencia de Grafana e identificar los spans lentos en Jaeger."
+
+      # ALERTA 4: Saturacion de memoria
+      - alert: HighSaturation
+        expr: |
+          100 * (
+            1 - node_memory_MemAvailable_bytes
+            / node_memory_MemTotal_bytes
+          ) > 90
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso de memoria superior al 90 por ciento"
+          runbook: "Revisar el panel de saturacion en Grafana y comprobar el consumo de recursos con node-exporter y cAdvisor."
